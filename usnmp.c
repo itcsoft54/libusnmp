@@ -5,6 +5,7 @@
  *      Author: yannick
  */
 #include "include/usnmp.h"
+
 inline void usnmp_init() {
 	srand(getpid());
 }
@@ -144,13 +145,14 @@ usnmp_list_var_t * usnmp_get_var_list_from_pdu(usnmp_pdu_t * pdu) {
 int usnmp_sync_send_pdu(usnmp_pdu_t pdu_send, usnmp_pdu_t ** pdu_recv,
 		usnmp_socket_t *psocket, struct timeval *timeout, usnmp_device_t dev) {
 	usnmp_socket_t *rsocket = NULL;
+	int err = 0;
 	if (NULL==psocket) {
 		rsocket = usnmp_create_and_open_socket(USNMP_RANDOM_PORT,NULL);
 	} else {
 		rsocket=psocket;
 	}
 	/* send packet */
-	if(0==pthread_mutex_trylock(&rsocket->lockme)) {
+	if(0!=(err=pthread_mutex_trylock(&rsocket->lockme))) {
 		/* TODO error */
 		fprintf(stderr,"socket is busy");
 		return -1;
@@ -221,7 +223,7 @@ u_int32_t usnmp_send_pdu(usnmp_pdu_t *pdu, usnmp_socket_t *psocket,
 	addr.sin_family = AF_INET;
 	usnmp_build_packet(pdu, sndbuf, &sndlen);
 	// TODO debug
-	usnmp_fprintf_pdu_t(stdout,*pdu);
+	//usnmp_fprintf_pdu_t(stdout,*pdu);
 	if ((len = sendto(psocket->fd, sndbuf, sndlen, 0,
 			(struct sockaddr *) &addr, sizeof(struct sockaddr_in))) == -1) {
 		/*syslog(LOG_ERR, "sendto: %m");*/
@@ -245,8 +247,6 @@ int usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
 	}
 	ssize_t len;
 	int32_t vi;
-	struct sockaddr *ret;
-	socklen_t *retlen;
 	fd_set rfds;
 	int sret = 0;
 	int err = 0;
@@ -269,8 +269,9 @@ int usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
 	if((resbuf = malloc(USNMP_MAX_MSG_SIZE))==NULL) {
 		/* probleme d'allocation memoire */
 		err=-1;
-	} else if ((len = recvfrom(psocket->fd, resbuf, USNMP_MAX_MSG_SIZE, 0, ret,retlen)) == -1) {
+	} else if ((len = recvfrom(psocket->fd, resbuf, USNMP_MAX_MSG_SIZE, 0, NULL,NULL)) == -1) {
 		/* message de longueur null */
+		perror("read error");
 		err=-1;
 	} else if ((size_t) len == USNMP_MAX_MSG_SIZE) {
 		/* packet trop grand */
@@ -321,7 +322,7 @@ int usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
 	return err;
 }
 
-/* return a malloc'd socket */
+		/* return a malloc'd socket */
 usnmp_socket_t * usnmp_create_and_open_socket(int port, struct timeval *tout) {
 	usnmp_socket_t * usnmp_socket = (usnmp_socket_t *) calloc(1,
 			sizeof(usnmp_socket_t));
