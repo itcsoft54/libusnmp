@@ -117,67 +117,80 @@ int usnmp_add_variable_to_pdu(usnmp_pdu_t * pdu, usnmp_var_t * var) {
 	pdu->nbindings++;
 	return ret;
 }
-/* return a usnmp_var_t[] free this after use */
+/* return a usnmp_list_var_t free this after use */
 usnmp_list_var_t * usnmp_get_var_list_from_pdu(usnmp_pdu_t * pdu) {
-	usnmp_list_var_t *lvar = (usnmp_list_var_t *) calloc(1,
-			sizeof(usnmp_list_var_t));
-	usnmp_list_var_t *cur = lvar;
+	usnmp_list_var_t *lvar = NULL;
+	usnmp_list_var_t *cur = NULL;
 	int i = 0;
 	for (i = 0; i < pdu->nbindings; i++) {
-		usnmp_value_copy(&lvar->var, &pdu->bindings[i]);
-		cur->next = (usnmp_list_var_t *) calloc(1, sizeof(usnmp_list_var_t));
-		if (NULL==cur->next) {
+		if (cur != NULL) {
+			cur->next
+					= (usnmp_list_var_t *) calloc(1, sizeof(usnmp_list_var_t));
+			cur = cur->next;
+		} else {
+			cur = (usnmp_list_var_t *) calloc(1, sizeof(usnmp_list_var_t));
+		}
+		if (NULL==cur) {
 			while (NULL!=lvar) {
 				cur = lvar;
 				lvar = lvar->next;
 				usnmp_value_free(&cur->var);
 				free(cur);
 			}
+			lvar = NULL;
 			break;
 		}
-		cur = cur->next;
+		usnmp_value_copy(&cur->var, &pdu->bindings[i]);
+		if (lvar == NULL) {
+			lvar = cur;
+		}
 	}
 	return lvar;
 }
 
 /* this function is thread safe. they drop all other packet
+ * return 0 if success
  */
 int usnmp_sync_send_pdu(usnmp_pdu_t pdu_send, usnmp_pdu_t ** pdu_recv,
 		usnmp_socket_t *psocket, struct timeval *timeout, usnmp_device_t dev) {
 	usnmp_socket_t *rsocket = NULL;
 	int err = 0;
 	if (NULL==psocket) {
-		rsocket = usnmp_create_and_open_socket(USNMP_RANDOM_PORT,NULL);
+		rsocket = usnmp_create_and_open_socket(USNMP_RANDOM_PORT);
 	} else {
-		rsocket=psocket;
+		rsocket = psocket;
 	}
+	if (NULL==timeout)
+		timeout = &psocket->t_out;
 	/* send packet */
-	if(0!=(err=pthread_mutex_trylock(&rsocket->lockme))) {
+	if (0 != (err = pthread_mutex_trylock(&rsocket->lockme))) {
 		/* TODO error */
 		fprintf(stderr,"socket is busy");
 		return -1;
 	}
-	u_int32_t reqid=usnmp_send_pdu(&pdu_send,rsocket,dev);
-	if(reqid==0) {
+	u_int32_t reqid = usnmp_send_pdu(&pdu_send, rsocket, dev);
+	if (reqid == 0) {
 		/* TODO error sending */
+		pthread_mutex_unlock(&rsocket->lockme);
 		return -1;
 	}
 	/* waiting for a response drop all other packet */
 	do {
-		if(0>(usnmp_recv_pdu(pdu_recv,timeout,rsocket))) {
+		if (0 > (usnmp_recv_pdu(pdu_recv, timeout, rsocket))) {
 			/* TODO error while recving */
 			/* TODO define if timeout or other*/
+			pthread_mutex_unlock(&rsocket->lockme);
 			return -1;
 		}
-	}while(reqid!=(*pdu_recv)->request_id);
+	} while (reqid != (*pdu_recv)->request_id);
 	pthread_mutex_unlock(&rsocket->lockme);
-	if(NULL==psocket) {
+	if (NULL==psocket) {
 		free(rsocket);
 	}
-	return 0;
+	return EXIT_SUCCESS;
 }
 
-		/* forge le packet */
+/* forge le packet */
 inline int usnmp_build_packet(usnmp_pdu_t * pdu, u_char *sndbuf, size_t *sndlen) {
 	struct asn_buf resp_b;
 
@@ -209,16 +222,31 @@ u_int32_t usnmp_send_pdu(usnmp_pdu_t *pdu, usnmp_socket_t *psocket,
 		pdu->request_id = reqid;
 	}
 	/* set the community */
-	if (pdu->type != USNMP_PDU_SET)
-		strncpy(pdu->community, dev.public, sizeof(pdu->community));
-	else
-		strncpy(pdu->community, dev.private, sizeof(pdu->community));
+	if (pdu->type != USNMP_PDU_SET) {
+		if (dev.public == NULL) {
+			strncpy(pdu->community, USNMP_DEFAULT_READ_COMMUNITY,
+			sizeof(pdu->community));
+		} else {
+			strncpy(pdu->community, dev.public, sizeof(pdu->community));
+		}
+	} else {
+		if (dev.public == NULL) {
+			strncpy(pdu->community, USNMP_DEFAULT_WRITE_COMMUNITY,
+			sizeof(pdu->community));
+		} else {
+			strncpy(pdu->community, dev.private, sizeof(pdu->community));
+		}
+	}
 	u_char *sndbuf = malloc(USNMP_MAX_MSG_SIZE);
 	size_t sndlen;
 	ssize_t len;
 	struct sockaddr_in addr;
 	memset(&addr, 0, sizeof(addr));
-	addr.sin_port = htons(dev.remote_port);
+	if (dev.remote_port == 0) {
+		addr.sin_port = htons(USNMP_DEFAULT_SERV_PORT);
+	} else {
+		addr.sin_port = htons(dev.remote_port);
+	}
 	addr.sin_addr = dev.ipv4;
 	addr.sin_family = AF_INET;
 	usnmp_build_packet(pdu, sndbuf, &sndlen);
@@ -323,9 +351,10 @@ int usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
 }
 
 		/* return a malloc'd socket */
-usnmp_socket_t * usnmp_create_and_open_socket(int port, struct timeval *tout) {
+usnmp_socket_t * usnmp_create_and_open_socket(int port) {
 	usnmp_socket_t * usnmp_socket = (usnmp_socket_t *) calloc(1,
 			sizeof(usnmp_socket_t));
+	int pport = port;
 	if (NULL==usnmp_socket) {
 		perror("socket malloc fail !");
 		return NULL;
@@ -344,10 +373,10 @@ usnmp_socket_t * usnmp_create_and_open_socket(int port, struct timeval *tout) {
 			if (port < 0) {
 				/* random port between 2000 and 65535 */
 				int irand = rand();
-				port = (65535 - 2000) * (irand * 1.0 / RAND_MAX) + 2000;
+				pport = (65535 - 2000) * (irand * 1.0 / RAND_MAX) + 2000;
 			}
 			usnmp_socket->sa_in.sin_family = AF_INET;
-			usnmp_socket->sa_in.sin_port = htons(port);
+			usnmp_socket->sa_in.sin_port = htons(pport);
 			usnmp_socket->sa_in.sin_addr.s_addr = htonl(INADDR_ANY);
 			if (bind(usnmp_socket->fd,
 					(const struct sockaddr *) &usnmp_socket->sa_in,
@@ -463,51 +492,109 @@ void usnmp_fprintf_pdu_t(FILE* _stream, usnmp_pdu_t pdu) {
 		break;
 	}
 }
+/* only numeric oid type if mib == NULL
+ * at the moment mib is always null
+ * return 0 value if no error, if parse error, index of the last parse char, other error <0, */
+inline int usnmp_str2oid(const char * int_str_oid, usnmp_oid_t * out_oid,
+		usnmp_mib_t * mib) {
+	/* split this string to number*/
+	memset(out_oid, 0, sizeof(out_oid));
+	char * cp = NULL;
+	char * tok = NULL;
+	char * endptr = NULL;
+	char * bkptr = NULL;
+	u_long val;
+	if (int_str_oid == NULL || out_oid == NULL) {
+		/* TODO error param */
+		return -1;
+	}
+	if (mib != NULL) {
+		/* not implement a the moment */
+		return -1;
+	} else {
+		cp = strdup(int_str_oid);
+		if (NULL==cp) {
+			/* TODO error */
+			return -1;
+		}
+		tok = strtok_r(cp, ".", &bkptr);
+		while (NULL!=tok) {
+			if (out_oid->len >= ASN_MAXOIDLEN) {
+				/* TODO error (OID too long) */
+				return -1;
+			}
+			val = strtoul(tok, &endptr, 10);
+			if ((errno== ERANGE && (val == LONG_MAX || val == LONG_MIN))
+					|| (errno != 0 && val == 0)) {
+				/* TODO error (value of index too big)*/
+				perror("strtol");
+				return 1;
+			}
 
-void usnmp_fprintf_binding(FILE* _stream, const usnmp_var_t *b) {
+			if (endptr == tok || *endptr != '\0') {
+				/* TODO not a number */
+				return 1;
+			}
+
+			out_oid->subs[out_oid->len] = val;
+			out_oid->len++;
+			tok = strtok_r(NULL, ".", &bkptr);
+		}
+		free(cp);
+	}
+	return 0;
+}
+
+void usnmp_fprintf_binding(FILE* _stream, const usnmp_var_t *val) {
 	u_int i;
 	char buf[ASN_OIDSTRLEN];
 
-	fprintf(_stream, "%s=", asn_oid2str_r(&b->var, buf));
-	switch (b->syntax) {
+	fprintf(_stream, "%s=", asn_oid2str_r(&val->var, buf));
+	switch (val->syntax) {
 
 	case USNMP_SYNTAX_NULL:
 		fprintf(_stream, "NULL");
 		break;
 
 	case USNMP_SYNTAX_INTEGER:
-		fprintf(_stream, "INTEGER %d", b->v.integer);
+		fprintf(_stream, "INTEGER %d", val->v.integer);
 		break;
 
 	case USNMP_SYNTAX_OCTETSTRING:
-		fprintf(_stream, "OCTET STRING %ui:", b->v.octetstring.len);
-		for (i = 0; i < b->v.octetstring.len; i++)
-			fprintf(_stream, " %02x", b->v.octetstring.octets[i]);
+		fprintf(_stream, "OCTET STRING %ui:", val->v.octetstring.len);
+		for (i = 0; i < val->v.octetstring.len; i++) {
+			fprintf(_stream, " %02x", val->v.octetstring.octets[i]);
+		}
+		fprintf(_stream, " =[");
+		for (i = 0; i < val->v.octetstring.len; i++) {
+			fprintf(_stream, "%c", val->v.octetstring.octets[i]);
+		}
+		fprintf(_stream, "]");
 		break;
 
 	case USNMP_SYNTAX_OID:
-		fprintf(_stream, "OID %s", asn_oid2str_r(&b->v.oid, buf));
+		fprintf(_stream, "OID %s", asn_oid2str_r(&val->v.oid, buf));
 		break;
 
 	case USNMP_SYNTAX_IPADDRESS:
-		fprintf(_stream, "IPADDRESS %u.%u.%u.%u", b->v.ipaddress[0],
-				b->v.ipaddress[1], b->v.ipaddress[2], b->v.ipaddress[3]);
+		fprintf(_stream, "IPADDRESS %u.%u.%u.%u", val->v.ipaddress[0],
+				val->v.ipaddress[1], val->v.ipaddress[2], val->v.ipaddress[3]);
 		break;
 
 	case USNMP_SYNTAX_COUNTER:
-		fprintf(_stream, "COUNTER %u", b->v.uint32);
+		fprintf(_stream, "COUNTER %u", val->v.uint32);
 		break;
 
 	case USNMP_SYNTAX_GAUGE:
-		fprintf(_stream, "GAUGE %u", b->v.uint32);
+		fprintf(_stream, "GAUGE %u", val->v.uint32);
 		break;
 
 	case USNMP_SYNTAX_TIMETICKS:
-		fprintf(_stream, "TIMETICKS %u", b->v.uint32);
+		fprintf(_stream, "TIMETICKS %u", val->v.uint32);
 		break;
 
 	case USNMP_SYNTAX_COUNTER64:
-		fprintf(_stream, "COUNTER64 %lld", b->v.counter64);
+		fprintf(_stream, "COUNTER64 %lld", val->v.counter64);
 		break;
 
 	case USNMP_SYNTAX_NOSUCHOBJECT:
@@ -523,12 +610,12 @@ void usnmp_fprintf_binding(FILE* _stream, const usnmp_var_t *b) {
 		break;
 
 	default:
-		fprintf(_stream, "UNKNOWN SYNTAX %u", b->syntax);
+		fprintf(_stream, "UNKNOWN SYNTAX %u", val->syntax);
 		break;
 	}
 }
 
-void usmmp_fprintf_oid_t(FILE* _stream, usnmp_oid_t oid) {
-
+void usnmp_fprintf_oid_t(FILE* _stream, usnmp_oid_t oid) {
+	fprintf(_stream, "%s", asn_oid2str(&oid));
 }
 

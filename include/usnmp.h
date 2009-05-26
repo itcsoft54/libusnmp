@@ -4,11 +4,16 @@
  * 2009
  * (Fraunhofer Institute for Open Communication Systems (FhG Fokus). based)
  */
+#ifndef USNMP_H_
+#define USNMP_H_
+
 #include <stdlib.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <stdbool.h>
 #include <pthread.h>
+#include <limits.h>
+#include <errno.h>
 
 #include <netinet/in.h>
 #include <netdb.h>
@@ -60,6 +65,8 @@ typedef//struct usnmp_pdu_st {
 //}
 struct usnmp_pdu usnmp_pdu_t;
 
+typedef void * usnmp_mib_t;
+
 typedef struct usnmp_value usnmp_var_t;
 
 typedef struct usnmp_list_var_st {
@@ -91,6 +98,7 @@ inline void usnmp_init();
 inline void usnmp_init_usnmp_pdu(usnmp_pdu_t *pdu);
 inline void usnmp_init_device(usnmp_device_t * device);
 inline void usnmp_clean_pdu(usnmp_pdu_t *pdu);
+inline int usnmp_str2oid(const char * str_oid,usnmp_oid_t * out_oid,usnmp_mib_t *mib);
 
 /* return a pdu structure, you can free after use (after send for exemple) */
 inline usnmp_pdu_t * usnmp_create_pdu(int op,usnmp_version_t version);
@@ -118,17 +126,19 @@ int usnmp_sync_send_pdu(usnmp_pdu_t pdu_send,
 		usnmp_device_t dev);
 
 /* return socket */
-usnmp_socket_t *usnmp_create_and_open_socket(int port, struct timeval * tout);
+usnmp_socket_t *usnmp_create_and_open_socket(int port);
 
 inline void usnmp_close_socket(usnmp_socket_t * socket);
 
 /* display function */
 void usnmp_fprintf_device_t(FILE* _stream, usnmp_device_t dev);
 void usnmp_fprintf_pdu_t(FILE* _stream, usnmp_pdu_t pdu);
-void usnmp_fprintf_binding(FILE* _stream, const struct usnmp_value *b);
-void usnmp_fprintf_smmp_oid_t(FILE* _stream, usnmp_oid_t oid);
+void usnmp_fprintf_binding(FILE* _stream,const usnmp_var_t *val);
+void usnmp_fprintf_oid_t(FILE* _stream, usnmp_oid_t oid);
 
 /* TODO error function */
 
 /* TODO Advance function (snmpwalk, )*/
+
+#endif
 
