@@ -74,6 +74,7 @@ struct octetstring_st{
 		    u_char		*octets;
 };
 
+
 struct usnmp_value {
 	struct asn_oid		var;
 	enum usnmp_syntax	syntax;

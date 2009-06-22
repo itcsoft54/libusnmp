@@ -34,6 +34,8 @@ inline void usnmp_clean_pdu(usnmp_pdu_t *pdu) {
 	u_int i;
 	for (i = 0; i < pdu->nbindings; i++)
 		usnmp_value_free(&pdu->bindings[i]);
+	pdu->nbindings=0;
+	/* TODO clean other value */
 }
 
 inline void usnmp_clean_var(usnmp_var_t *var) {
@@ -117,6 +119,16 @@ int usnmp_add_variable_to_pdu(usnmp_pdu_t * pdu, usnmp_var_t * var) {
 	pdu->nbindings++;
 	return ret;
 }
+/* free and purge the list given by param */
+inline void usnmp_free_var_list(usnmp_list_var_t * list){
+	usnmp_list_var_t * tmp;
+	while(list!=NULL){
+		tmp=list;
+		list=list->next;
+		usnmp_value_free(&tmp->var);
+		free(tmp);
+	}
+}
 /* return a usnmp_list_var_t free this after use */
 usnmp_list_var_t * usnmp_get_var_list_from_pdu(usnmp_pdu_t * pdu) {
 	usnmp_list_var_t *lvar = NULL;
@@ -149,7 +161,14 @@ usnmp_list_var_t * usnmp_get_var_list_from_pdu(usnmp_pdu_t * pdu) {
 }
 
 /* this function is thread safe. they drop all other packet
- * return 0 if success
+ * return USNMP_SUCESS if success
+ * error :
+ * return USNMP_SOCK_NULL_ERR if psocket is null and unable to create a new socket
+ * return USNMP_SYNC_SIGNAL if a signal break the select
+ * return USNMP_SYNC_SOCK_BUSY if the socket is already use.
+ * return USNMP_SYNC_SEND_ERR if an error when sending packet
+ * return USNMP_SYNC_RECV_ERR if an error when recv response
+ * return USNMP_SYNC_
  */
 int usnmp_sync_send_pdu(usnmp_pdu_t pdu_send, usnmp_pdu_t ** pdu_recv,
 		usnmp_socket_t *psocket, struct timeval *timeout, usnmp_device_t dev) {
@@ -207,9 +226,8 @@ inline int usnmp_build_packet(usnmp_pdu_t * pdu, u_char *sndbuf, size_t *sndlen)
 	return 0;
 }
 
-u_int32_t usnmp_next_reqid(usnmp_device_t dev) {
-	static int reqid = 0;
-	return ++reqid;
+u_int32_t usnmp_next_reqid(usnmp_socket_t *sock) {
+	return ++sock->last_reqid;
 }
 /* lock the socket before use usnmp_send_packet_pdu,usnmp_recv_packet_pdu if multithread
  * use the same usnmp_socket for sending and receiving */
@@ -217,7 +235,10 @@ u_int32_t usnmp_next_reqid(usnmp_device_t dev) {
 u_int32_t usnmp_send_pdu(usnmp_pdu_t *pdu, usnmp_socket_t *psocket,
 		usnmp_device_t dev) {
 	/* snmp_output */
-	u_int32_t reqid = usnmp_next_reqid(dev);
+	if(pdu==NULL || psocket == NULL){
+		return 0;
+	}
+	u_int32_t reqid = usnmp_next_reqid(psocket);
 	if (USNMP_AUTO_REQID==pdu->request_id) {
 		pdu->request_id = reqid;
 	}
@@ -262,16 +283,28 @@ u_int32_t usnmp_send_pdu(usnmp_pdu_t *pdu, usnmp_socket_t *psocket,
 		perror("sendto : short write ");
 	}
 	free(sndbuf);
-	return reqid;
+	return pdu->request_id;
 }
+
 /* if timeout equal NULL, wait indefinitely
- * if timeout expire function or error return a negative value */
-int usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
+ * if timeout expire function or error return a negative value
+ * return USNMP_RECV_TIMEOUT if timeout
+ * return USNMP_INT_SIGN signal recev during recving no packet recv.
+ * return USNMP_RECV_ERR if an error when reading
+ * return USNMP_RECV_PDU_MALFORM
+ * return USNMP_RECV_PDU_TOO_SHORT if read a packet to short to be a valid pdu
+ * return USNMP_RECV_PDU_TOO_LONG if read a packet to long to be a valid pdu
+ * return USNMP_MALLOC_FAIL if cant alloc more memories
+ * return USNMP_RECV_PDU_UNK_VERS read a packet with a unknow version
+ * return USNMP_PTR_PDU_NULL if retpdu is null
+ * return USNMP_SOCK_INVALID if psocket is null or invalid
+ */
+enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
 		usnmp_socket_t *psocket) {
 	u_char *resbuf = NULL;
-	if (NULL==retpdu) {
+	if (NULL==retpdu || NULL == psocket) {
 		// TODO erro
-		return -1;
+		return USNMP_SOCK_INVALID;
 	}
 	ssize_t len;
 	int32_t vi;
@@ -287,26 +320,31 @@ int usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
 		/* TODO gest erreur */
 		if ( -1==sret ) {
 			perror("select()");
-			return -1;
+			if(errno == EBADF){
+				return USNMP_RECV_INT_SIGN;
+			}else if(errno == EBADF){
+				return USNMP_SOCK_INVALID;
+			}
+			return USNMP_RECV_ERR;
 		} else if (0==sret) {
 			/* FD_ISSET(socket+1, &rfds) est alors faux */
-			return -2;
+			return USNMP_RECV_TIMEOUT;
 		}
 	}
 
 	if((resbuf = malloc(USNMP_MAX_MSG_SIZE))==NULL) {
 		/* probleme d'allocation memoire */
-		err=-1;
+		err=USNMP_MALLOC_FAIL;
 	} else if ((len = recvfrom(psocket->fd, resbuf, USNMP_MAX_MSG_SIZE, 0, NULL,NULL)) == -1) {
 		/* message de longueur null */
 		perror("read error");
-		err=-1;
+		err=USNMP_RECV_ERR;
 	} else if ((size_t) len == USNMP_MAX_MSG_SIZE) {
 		/* packet trop grand */
-		err=-1;
+		err=USNMP_RECV_PDU_TOO_LONG;
 	} else if (NULL==(*retpdu = (usnmp_pdu_t*) calloc(1, sizeof(usnmp_pdu_t)))){
 		/* plus de memoire */
-		err=-1;
+		err=USNMP_MALLOC_FAIL;
 	} else {
 		/*
 		 * Handle input
@@ -323,7 +361,7 @@ int usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
 		case USNMP_CODE_OORANGE:
 		case USNMP_CODE_BADENC:
 			/* INPUT ERROR PACKET MALFORMED */
-			err=-1;
+			err=USNMP_RECV_PDU_MALFORM;
 			break;
 		case USNMP_CODE_OK:
 			switch ((*retpdu)->version) {
@@ -334,14 +372,12 @@ int usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
 			case USNMP_Verr:
 			default:
 				/* unknown version*/
-				err=-2;
+				err=USNMP_RECV_PDU_UNK_VERS;
 				break;
 			}
 			break;
 		}
 		if(0!= err){
-			/* TODO error */
-			fprintf(stderr,"bad pdu ...\n");
 			usnmp_clean_pdu(*retpdu);
 		}
 	}
@@ -354,6 +390,7 @@ int usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
 usnmp_socket_t * usnmp_create_and_open_socket(int port) {
 	usnmp_socket_t * usnmp_socket = (usnmp_socket_t *) calloc(1,
 			sizeof(usnmp_socket_t));
+	usnmp_socket->last_reqid=0;
 	int pport = port;
 	if (NULL==usnmp_socket) {
 		perror("socket malloc fail !");
