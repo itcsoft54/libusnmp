@@ -19,7 +19,7 @@ inline void usnmp_init_device(usnmp_device_t * device) {
 inline usnmp_pdu_t * usnmp_create_pdu(int op, usnmp_version_t ver) {
 	usnmp_pdu_t *pdu = (usnmp_pdu_t *) calloc(1, sizeof(usnmp_pdu_t));
 	if (pdu == NULL) {
-		//TODO error
+		return NULL;
 	}
 	pdu->type = op;
 	pdu->version = ver;
@@ -160,17 +160,7 @@ usnmp_list_var_t * usnmp_get_var_list_from_pdu(usnmp_pdu_t * pdu) {
 	return lvar;
 }
 
-/* this function is thread safe. they drop all other packet
- * return USNMP_SUCESS if success
- * error :
- * return USNMP_SOCK_NULL_ERR if psocket is null and unable to create a new socket
- * return USNMP_SYNC_SIGNAL if a signal break the select
- * return USNMP_SYNC_SOCK_BUSY if the socket is already use.
- * return USNMP_SYNC_SEND_ERR if an error when sending packet
- * return USNMP_SYNC_RECV_ERR if an error when recv response
- * return USNMP_SYNC_
- */
-int usnmp_sync_send_pdu(usnmp_pdu_t pdu_send, usnmp_pdu_t ** pdu_recv,
+enum usnmp_sync_err usnmp_sync_send_pdu(usnmp_pdu_t pdu_send, usnmp_pdu_t ** pdu_recv,
 		usnmp_socket_t *psocket, struct timeval *timeout, usnmp_device_t dev) {
 	usnmp_socket_t *rsocket = NULL;
 	int err = 0;
@@ -191,7 +181,7 @@ int usnmp_sync_send_pdu(usnmp_pdu_t pdu_send, usnmp_pdu_t ** pdu_recv,
 	if (reqid == 0) {
 		/* TODO error sending */
 		pthread_mutex_unlock(&rsocket->lockme);
-		return -1;
+		return reqid; /* it's only an error */
 	}
 	/* waiting for a response drop all other packet */
 	do {
@@ -229,14 +219,30 @@ inline int usnmp_build_packet(usnmp_pdu_t * pdu, u_char *sndbuf, size_t *sndlen)
 u_int32_t usnmp_next_reqid(usnmp_socket_t *sock) {
 	return ++sock->last_reqid;
 }
-/* lock the socket before use usnmp_send_packet_pdu,usnmp_recv_packet_pdu if multithread
- * use the same usnmp_socket for sending and receiving */
-/* simple pdu send, socket can't be null, dev too*/
-u_int32_t usnmp_send_pdu(usnmp_pdu_t *pdu, usnmp_socket_t *psocket,
+
+/*enum usnmp_async_send_err{
+	USNMP_ASSEND_NO_ERROR = USNMP_NO_ERROR,
+	USNMP_ASSEND_TIMEOUT = -1,
+	USNMP_ASSEND_INT_SIGN = -2,
+	USNMP_ASSEND_ERR = -3,
+	USNMP_ASSEND_PDU_MALFORM =-5,
+	USNMP_ASSEND_PDU_TOO_SHORT =-6,
+	USNMP_ASSEND_PDU_TOO_LONG = -7,
+	USNMP_ASSEND_PDU_UNK_VERS =-8,
+	USNMP_ASSEND_MALLOC_FAIL = USNMP_MALLOC_FAIL,
+	USNMP_ASSEND_PTR_PDU_NULL = USNMP_PTR_PDU_NULL,
+	USNMP_ASSEND_SOCK_INVALID = USNMP_SOCK_INVALID
+};*/
+
+enum usnmp_async_send_err usnmp_send_pdu(usnmp_pdu_t *pdu, usnmp_socket_t *psocket,
 		usnmp_device_t dev) {
 	/* snmp_output */
-	if(pdu==NULL || psocket == NULL){
-		return 0;
+	int err=USNMP_ASSEND_NO_ERROR;
+	if(pdu==NULL){
+		return USNMP_ASSEND_PTR_PDU_NULL;
+	}
+	if(psocket == NULL){
+		return USNMP_ASSEND_SOCK_INVALID;
 	}
 	u_int32_t reqid = usnmp_next_reqid(psocket);
 	if (USNMP_AUTO_REQID==pdu->request_id) {
@@ -276,29 +282,17 @@ u_int32_t usnmp_send_pdu(usnmp_pdu_t *pdu, usnmp_socket_t *psocket,
 	if ((len = sendto(psocket->fd, sndbuf, sndlen, 0,
 			(struct sockaddr *) &addr, sizeof(struct sockaddr_in))) == -1) {
 		/*syslog(LOG_ERR, "sendto: %m");*/
-		// TODO err
+		err=USNMP_ASSEND_ERR;
 		perror("sendto : ");
 	} else if ((size_t) len != sndlen) {
 		/*syslog(LOG_ERR, "sendto: short write %zu/%zu", sndlen, (size_t) len);*/
+		err=USNMP_ASSEND_PDU_TOO_LONG;
 		perror("sendto : short write ");
 	}
 	free(sndbuf);
-	return pdu->request_id;
+	return err;
 }
 
-/* if timeout equal NULL, wait indefinitely
- * if timeout expire function or error return a negative value
- * return USNMP_RECV_TIMEOUT if timeout
- * return USNMP_INT_SIGN signal recev during recving no packet recv.
- * return USNMP_RECV_ERR if an error when reading
- * return USNMP_RECV_PDU_MALFORM
- * return USNMP_RECV_PDU_TOO_SHORT if read a packet to short to be a valid pdu
- * return USNMP_RECV_PDU_TOO_LONG if read a packet to long to be a valid pdu
- * return USNMP_MALLOC_FAIL if cant alloc more memories
- * return USNMP_RECV_PDU_UNK_VERS read a packet with a unknow version
- * return USNMP_PTR_PDU_NULL if retpdu is null
- * return USNMP_SOCK_INVALID if psocket is null or invalid
- */
 enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
 		usnmp_socket_t *psocket) {
 	u_char *resbuf = NULL;
@@ -317,18 +311,17 @@ enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval *
 		FD_ZERO(&rfds);
 		FD_SET(psocket->fd, &rfds);
 		sret = select(psocket->fd + 1, &rfds, NULL,NULL,&tv);
-		/* TODO gest erreur */
 		if ( -1==sret ) {
 			perror("select()");
-			if(errno == EBADF){
-				return USNMP_RECV_INT_SIGN;
+			if(errno == EINTR){
+				return USNMP_ASRECV_INT_SIGN;
 			}else if(errno == EBADF){
 				return USNMP_SOCK_INVALID;
 			}
-			return USNMP_RECV_ERR;
+			return USNMP_ASRECV_ERR;
 		} else if (0==sret) {
 			/* FD_ISSET(socket+1, &rfds) est alors faux */
-			return USNMP_RECV_TIMEOUT;
+			return USNMP_ASRECV_TIMEOUT;
 		}
 	}
 
@@ -338,10 +331,10 @@ enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval *
 	} else if ((len = recvfrom(psocket->fd, resbuf, USNMP_MAX_MSG_SIZE, 0, NULL,NULL)) == -1) {
 		/* message de longueur null */
 		perror("read error");
-		err=USNMP_RECV_ERR;
+		err=USNMP_ASRECV_ERR;
 	} else if ((size_t) len == USNMP_MAX_MSG_SIZE) {
 		/* packet trop grand */
-		err=USNMP_RECV_PDU_TOO_LONG;
+		err=USNMP_ASRECV_PDU_TOO_LONG;
 	} else if (NULL==(*retpdu = (usnmp_pdu_t*) calloc(1, sizeof(usnmp_pdu_t)))){
 		/* plus de memoire */
 		err=USNMP_MALLOC_FAIL;
@@ -361,7 +354,7 @@ enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval *
 		case USNMP_CODE_OORANGE:
 		case USNMP_CODE_BADENC:
 			/* INPUT ERROR PACKET MALFORMED */
-			err=USNMP_RECV_PDU_MALFORM;
+			err=USNMP_ASRECV_PDU_MALFORM;
 			break;
 		case USNMP_CODE_OK:
 			switch ((*retpdu)->version) {
@@ -372,13 +365,15 @@ enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval *
 			case USNMP_Verr:
 			default:
 				/* unknown version*/
-				err=USNMP_RECV_PDU_UNK_VERS;
+				err=USNMP_ASRECV_PDU_UNK_VERS;
 				break;
 			}
 			break;
 		}
-		if(0!= err){
+		if(USNMP_ASRECV_NO_ERROR!= err){
 			usnmp_clean_pdu(*retpdu);
+			free(*retpdu);
+			retpdu=NULL;
 		}
 	}
 	if(resbuf!=NULL)free(resbuf);
