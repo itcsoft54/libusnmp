@@ -373,7 +373,7 @@ enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval *
 		if(USNMP_ASRECV_NO_ERROR!= err){
 			usnmp_clean_pdu(*retpdu);
 			free(*retpdu);
-			retpdu=NULL;
+			*retpdu=NULL;
 		}
 	}
 	if(resbuf!=NULL)free(resbuf);
