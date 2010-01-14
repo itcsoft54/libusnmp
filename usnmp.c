@@ -34,7 +34,7 @@ inline void usnmp_clean_pdu(usnmp_pdu_t *pdu) {
 	u_int i;
 	for (i = 0; i < pdu->nbindings; i++)
 		usnmp_value_free(&pdu->bindings[i]);
-	pdu->nbindings=0;
+	pdu->nbindings = 0;
 	/* TODO clean other value */
 }
 
@@ -53,7 +53,7 @@ inline usnmp_var_t * usnmp_create_var(usnmp_oid_t oid, usnmp_type_t type,
 	usnmp_var_t * var = (usnmp_var_t *) calloc(1, sizeof(usnmp_var_t));
 	var->var = oid;
 	int i = 0;
-	if (NULL!=var) {
+	if (NULL != var) {
 		var->syntax = type;
 		switch (type) {
 		case USNMP_SYNTAX_INTEGER:
@@ -120,11 +120,11 @@ int usnmp_add_variable_to_pdu(usnmp_pdu_t * pdu, usnmp_var_t * var) {
 	return ret;
 }
 /* free and purge the list given by param */
-inline void usnmp_free_var_list(usnmp_list_var_t * list){
+inline void usnmp_free_var_list(usnmp_list_var_t * list) {
 	usnmp_list_var_t * tmp;
-	while(list!=NULL){
-		tmp=list;
-		list=list->next;
+	while (list != NULL) {
+		tmp = list;
+		list = list->next;
 		usnmp_value_free(&tmp->var);
 		free(tmp);
 	}
@@ -142,8 +142,8 @@ usnmp_list_var_t * usnmp_get_var_list_from_pdu(usnmp_pdu_t * pdu) {
 		} else {
 			cur = (usnmp_list_var_t *) calloc(1, sizeof(usnmp_list_var_t));
 		}
-		if (NULL==cur) {
-			while (NULL!=lvar) {
+		if (NULL == cur) {
+			while (NULL != lvar) {
 				cur = lvar;
 				lvar = lvar->next;
 				usnmp_value_free(&cur->var);
@@ -160,21 +160,22 @@ usnmp_list_var_t * usnmp_get_var_list_from_pdu(usnmp_pdu_t * pdu) {
 	return lvar;
 }
 
-enum usnmp_sync_err usnmp_sync_send_pdu(usnmp_pdu_t pdu_send, usnmp_pdu_t ** pdu_recv,
-		usnmp_socket_t *psocket, struct timeval *timeout, usnmp_device_t dev) {
+enum usnmp_sync_err usnmp_sync_send_pdu(usnmp_pdu_t pdu_send,
+		usnmp_pdu_t ** pdu_recv, usnmp_socket_t *psocket,
+		struct timeval *timeout, usnmp_device_t dev) {
 	usnmp_socket_t *rsocket = NULL;
 	int err = 0;
-	if (NULL==psocket) {
+	if (NULL == psocket) {
 		rsocket = usnmp_create_and_open_socket(USNMP_RANDOM_PORT);
 	} else {
 		rsocket = psocket;
 	}
-	if (NULL==timeout)
+	if (NULL == timeout)
 		timeout = &psocket->t_out;
 	/* send packet */
 	if (0 != (err = pthread_mutex_trylock(&rsocket->lockme))) {
 		/* TODO error */
-		fprintf(stderr,"socket is busy");
+		fprintf(stderr, "socket is busy");
 		return -1;
 	}
 	u_int32_t reqid = usnmp_send_pdu(&pdu_send, rsocket, dev);
@@ -193,7 +194,7 @@ enum usnmp_sync_err usnmp_sync_send_pdu(usnmp_pdu_t pdu_send, usnmp_pdu_t ** pdu
 		}
 	} while (reqid != (*pdu_recv)->request_id);
 	pthread_mutex_unlock(&rsocket->lockme);
-	if (NULL==psocket) {
+	if (NULL == psocket) {
 		free(rsocket);
 	}
 	return EXIT_SUCCESS;
@@ -221,45 +222,45 @@ u_int32_t usnmp_next_reqid(usnmp_socket_t *sock) {
 }
 
 /*enum usnmp_async_send_err{
-	USNMP_ASSEND_NO_ERROR = USNMP_NO_ERROR,
-	USNMP_ASSEND_TIMEOUT = -1,
-	USNMP_ASSEND_INT_SIGN = -2,
-	USNMP_ASSEND_ERR = -3,
-	USNMP_ASSEND_PDU_MALFORM =-5,
-	USNMP_ASSEND_PDU_TOO_SHORT =-6,
-	USNMP_ASSEND_PDU_TOO_LONG = -7,
-	USNMP_ASSEND_PDU_UNK_VERS =-8,
-	USNMP_ASSEND_MALLOC_FAIL = USNMP_MALLOC_FAIL,
-	USNMP_ASSEND_PTR_PDU_NULL = USNMP_PTR_PDU_NULL,
-	USNMP_ASSEND_SOCK_INVALID = USNMP_SOCK_INVALID
-};*/
+ USNMP_ASSEND_NO_ERROR = USNMP_NO_ERROR,
+ USNMP_ASSEND_TIMEOUT = -1,
+ USNMP_ASSEND_INT_SIGN = -2,
+ USNMP_ASSEND_ERR = -3,
+ USNMP_ASSEND_PDU_MALFORM =-5,
+ USNMP_ASSEND_PDU_TOO_SHORT =-6,
+ USNMP_ASSEND_PDU_TOO_LONG = -7,
+ USNMP_ASSEND_PDU_UNK_VERS =-8,
+ USNMP_ASSEND_MALLOC_FAIL = USNMP_MALLOC_FAIL,
+ USNMP_ASSEND_PTR_PDU_NULL = USNMP_PTR_PDU_NULL,
+ USNMP_ASSEND_SOCK_INVALID = USNMP_SOCK_INVALID
+ };*/
 
-enum usnmp_async_send_err usnmp_send_pdu(usnmp_pdu_t *pdu, usnmp_socket_t *psocket,
-		usnmp_device_t dev) {
+enum usnmp_async_send_err usnmp_send_pdu(usnmp_pdu_t *pdu,
+		usnmp_socket_t *psocket, usnmp_device_t dev) {
 	/* snmp_output */
-	int err=USNMP_ASSEND_NO_ERROR;
-	if(pdu==NULL){
+	int err = USNMP_ASSEND_NO_ERROR;
+	if (pdu == NULL) {
 		return USNMP_ASSEND_PTR_PDU_NULL;
 	}
-	if(psocket == NULL){
+	if (psocket == NULL) {
 		return USNMP_ASSEND_SOCK_INVALID;
 	}
 	u_int32_t reqid = usnmp_next_reqid(psocket);
-	if (USNMP_AUTO_REQID==pdu->request_id) {
+	if (USNMP_AUTO_REQID == pdu->request_id) {
 		pdu->request_id = reqid;
 	}
 	/* set the community */
 	if (pdu->type != USNMP_PDU_SET) {
 		if (dev.public == NULL) {
 			strncpy(pdu->community, USNMP_DEFAULT_READ_COMMUNITY,
-			sizeof(pdu->community));
+					sizeof(pdu->community));
 		} else {
 			strncpy(pdu->community, dev.public, sizeof(pdu->community));
 		}
 	} else {
 		if (dev.public == NULL) {
 			strncpy(pdu->community, USNMP_DEFAULT_WRITE_COMMUNITY,
-			sizeof(pdu->community));
+					sizeof(pdu->community));
 		} else {
 			strncpy(pdu->community, dev.private, sizeof(pdu->community));
 		}
@@ -282,21 +283,21 @@ enum usnmp_async_send_err usnmp_send_pdu(usnmp_pdu_t *pdu, usnmp_socket_t *psock
 	if ((len = sendto(psocket->fd, sndbuf, sndlen, 0,
 			(struct sockaddr *) &addr, sizeof(struct sockaddr_in))) == -1) {
 		/*syslog(LOG_ERR, "sendto: %m");*/
-		err=USNMP_ASSEND_ERR;
+		err = USNMP_ASSEND_ERR;
 		perror("sendto : ");
 	} else if ((size_t) len != sndlen) {
 		/*syslog(LOG_ERR, "sendto: short write %zu/%zu", sndlen, (size_t) len);*/
-		err=USNMP_ASSEND_PDU_TOO_LONG;
+		err = USNMP_ASSEND_PDU_TOO_LONG;
 		perror("sendto : short write ");
 	}
 	free(sndbuf);
 	return err;
 }
 
-enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval * timeout,
-		usnmp_socket_t *psocket) {
+enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu,
+		struct timeval * timeout, usnmp_socket_t *psocket) {
 	u_char *resbuf = NULL;
-	if (NULL==retpdu || NULL == psocket) {
+	if (NULL == retpdu || NULL == psocket) {
 		// TODO erro
 		return USNMP_SOCK_INVALID;
 	}
@@ -306,44 +307,46 @@ enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval *
 	int sret = 0;
 	int err = 0;
 
-	if (NULL!=timeout) {
+	if (NULL != timeout) {
 		struct timeval tv = *timeout;
 		FD_ZERO(&rfds);
 		FD_SET(psocket->fd, &rfds);
-		sret = select(psocket->fd + 1, &rfds, NULL,NULL,&tv);
-		if ( -1==sret ) {
+		sret = select(psocket->fd + 1, &rfds, NULL, NULL, &tv);
+		if (-1 == sret) {
 			perror("select()");
-			if(errno == EINTR){
+			if (errno == EINTR) {
 				return USNMP_ASRECV_INT_SIGN;
-			}else if(errno == EBADF){
+			} else if (errno == EBADF) {
 				return USNMP_SOCK_INVALID;
 			}
 			return USNMP_ASRECV_ERR;
-		} else if (0==sret) {
+		} else if (0 == sret) {
 			/* FD_ISSET(socket+1, &rfds) est alors faux */
 			return USNMP_ASRECV_TIMEOUT;
 		}
 	}
 
-	if((resbuf = malloc(USNMP_MAX_MSG_SIZE))==NULL) {
+	if ((resbuf = malloc(USNMP_MAX_MSG_SIZE)) == NULL) {
 		/* probleme d'allocation memoire */
-		err=USNMP_MALLOC_FAIL;
-	} else if ((len = recvfrom(psocket->fd, resbuf, USNMP_MAX_MSG_SIZE, 0, NULL,NULL)) == -1) {
+		err = USNMP_MALLOC_FAIL;
+	} else if ((len = recvfrom(psocket->fd, resbuf, USNMP_MAX_MSG_SIZE, 0,
+			NULL, NULL)) == -1) {
 		/* message de longueur null */
 		perror("read error");
-		err=USNMP_ASRECV_ERR;
+		err = USNMP_ASRECV_ERR;
 	} else if ((size_t) len == USNMP_MAX_MSG_SIZE) {
 		/* packet trop grand */
-		err=USNMP_ASRECV_PDU_TOO_LONG;
-	} else if (NULL==(*retpdu = (usnmp_pdu_t*) calloc(1, sizeof(usnmp_pdu_t)))){
+		err = USNMP_ASRECV_PDU_TOO_LONG;
+	} else if (NULL
+			== (*retpdu = (usnmp_pdu_t*) calloc(1, sizeof(usnmp_pdu_t)))) {
 		/* plus de memoire */
-		err=USNMP_MALLOC_FAIL;
+		err = USNMP_MALLOC_FAIL;
 	} else {
 		/*
 		 * Handle input
 		 */
 		struct asn_buf b;
-		memset(&b,0,sizeof(struct asn_buf));
+		memset(&b, 0, sizeof(struct asn_buf));
 		b.asn_ptr = resbuf;
 		b.asn_len = len;
 		enum usnmp_code code = usnmp_pdu_decode(&b, *retpdu, &vi);
@@ -354,7 +357,7 @@ enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval *
 		case USNMP_CODE_OORANGE:
 		case USNMP_CODE_BADENC:
 			/* INPUT ERROR PACKET MALFORMED */
-			err=USNMP_ASRECV_PDU_MALFORM;
+			err = USNMP_ASRECV_PDU_MALFORM;
 			break;
 		case USNMP_CODE_OK:
 			switch ((*retpdu)->version) {
@@ -365,34 +368,35 @@ enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu, struct timeval *
 			case USNMP_Verr:
 			default:
 				/* unknown version*/
-				err=USNMP_ASRECV_PDU_UNK_VERS;
+				err = USNMP_ASRECV_PDU_UNK_VERS;
 				break;
 			}
 			break;
 		}
-		if(USNMP_ASRECV_NO_ERROR!= err){
+		if (USNMP_ASRECV_NO_ERROR != err) {
 			usnmp_clean_pdu(*retpdu);
 			free(*retpdu);
-			*retpdu=NULL;
+			*retpdu = NULL;
 		}
 	}
-	if(resbuf!=NULL)free(resbuf);
+	if (resbuf != NULL)
+		free(resbuf);
 	/**/
 	return err;
 }
 
-		/* return a malloc'd socket */
+/* return a malloc'd socket */
 usnmp_socket_t * usnmp_create_and_open_socket(int port) {
 	usnmp_socket_t * usnmp_socket = (usnmp_socket_t *) calloc(1,
 			sizeof(usnmp_socket_t));
-	usnmp_socket->last_reqid=0;
+	usnmp_socket->last_reqid = 0;
 	int pport = port;
-	if (NULL==usnmp_socket) {
+	if (NULL == usnmp_socket) {
 		perror("socket malloc fail !");
 		return NULL;
 	}
 	pthread_mutex_init(&usnmp_socket->lockme, NULL);
-	usnmp_socket->fd = socket(PF_INET,SOCK_DGRAM, 0);
+	usnmp_socket->fd = socket(PF_INET, SOCK_DGRAM, 0);
 	if (usnmp_socket->fd < 0) {
 		/* ERROR */
 		perror("socket open error");
@@ -449,13 +453,13 @@ void usnmp_fprintf_device_t(FILE* _stream, usnmp_device_t dev) {
 	} else {
 		fprintf(_stream, "\tport:[%i] \n", USNMP_DEFAULT_SERV_PORT);
 	}
-	if (NULL==dev.public) {
+	if (NULL == dev.public) {
 		fprintf(_stream, "\tRead Community :[%s]\n",
 				USNMP_DEFAULT_READ_COMMUNITY);
 	} else {
 		fprintf(_stream, "\tRead Community :[%s]\n", dev.public);
 	}
-	if (NULL==dev.private) {
+	if (NULL == dev.private) {
 		fprintf(_stream, "\tWrite Community :[%s]\n",
 				USNMP_DEFAULT_WRITE_COMMUNITY);
 	} else {
@@ -545,18 +549,18 @@ inline int usnmp_str2oid(const char * int_str_oid, usnmp_oid_t * out_oid,
 		return -1;
 	} else {
 		cp = strdup(int_str_oid);
-		if (NULL==cp) {
+		if (NULL == cp) {
 			/* TODO error */
 			return -1;
 		}
 		tok = strtok_r(cp, ".", &bkptr);
-		while (NULL!=tok) {
+		while (NULL != tok) {
 			if (out_oid->len >= ASN_MAXOIDLEN) {
 				/* TODO error (OID too long) */
 				return -1;
 			}
 			val = strtoul(tok, &endptr, 10);
-			if ((errno== ERANGE && (val == LONG_MAX || val == LONG_MIN))
+			if ((errno == ERANGE && (val == LONG_MAX || val == LONG_MIN))
 					|| (errno != 0 && val == 0)) {
 				/* TODO error (value of index too big)*/
 				perror("strtol");
@@ -649,5 +653,54 @@ void usnmp_fprintf_binding(FILE* _stream, const usnmp_var_t *val) {
 
 void usnmp_fprintf_oid_t(FILE* _stream, usnmp_oid_t oid) {
 	fprintf(_stream, "%s", asn_oid2str(&oid));
+}
+
+const char * usnmp_strerror(int code) {
+	const char * ret;
+	switch (code) {
+	case USNMP_NO_ERROR:
+		ret = "no error";
+		break;
+	case USNMP_MALLOC_FAIL:
+		ret = "can't alloc more ressources";
+		break;
+	/* asrecv assend */
+	case USNMP_ASSEND_INT_SIGN:
+	case USNMP_ASRECV_INT_SIGN:
+		ret = "recv catch a int signal";
+		break;
+	case USNMP_ASSEND_PDU_MALFORM:
+	case USNMP_ASRECV_PDU_MALFORM:
+		ret = "pdu malformed";
+		break;
+	case USNMP_ASSEND_PDU_TOO_LONG:
+	case USNMP_ASRECV_PDU_TOO_LONG:
+		ret = "pdu too long";
+		break;
+	case USNMP_ASSEND_PDU_TOO_SHORT:
+	case USNMP_ASRECV_PDU_TOO_SHORT:
+		ret = "pdu too short";
+		break;
+	case USNMP_ASSEND_PDU_UNK_VERS:
+	case USNMP_ASRECV_PDU_UNK_VERS:
+		ret = "pdu unknow pdu version";
+		break;
+	case USNMP_PTR_PDU_NULL:
+		ret = "ptr too pdu is null";
+		break;
+	case USNMP_SOCK_INVALID:
+		ret = "invalid socket";
+		break;
+	case USNMP_ASRECV_TIMEOUT:
+		ret = "time out";
+		break;
+	/* unknown error */
+	case USNMP_ASRECV_ERR:
+	case USNMP_ASSEND_ERR:
+	default:
+		ret = "unknown error";
+		break;
+	}
+	return ret;
 }
 

@@ -204,6 +204,7 @@ void usnmp_fprintf_device_t(FILE* _stream, usnmp_device_t dev);
 void usnmp_fprintf_pdu_t(FILE* _stream, usnmp_pdu_t pdu);
 void usnmp_fprintf_binding(FILE* _stream,const usnmp_var_t *val);
 void usnmp_fprintf_oid_t(FILE* _stream, usnmp_oid_t oid);
+const char * usnmp_strerror(int code);
 
 /* TODO error function */
 
