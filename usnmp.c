@@ -284,7 +284,7 @@ enum usnmp_async_send_err usnmp_send_pdu(usnmp_pdu_t *pdu,
 			(struct sockaddr *) &addr, sizeof(struct sockaddr_in))) == -1) {
 		/*syslog(LOG_ERR, "sendto: %m");*/
 		err = USNMP_ASSEND_ERR;
-		perror("sendto : ");
+		perror("sendto");
 	} else if ((size_t) len != sndlen) {
 		/*syslog(LOG_ERR, "sendto: short write %zu/%zu", sndlen, (size_t) len);*/
 		err = USNMP_ASSEND_PDU_TOO_LONG;
@@ -553,6 +553,7 @@ inline int usnmp_str2oid(const char * int_str_oid, usnmp_oid_t * out_oid,
 			/* TODO error */
 			return -1;
 		}
+		errno=0; // strtok don't reset to zero errno if no error
 		tok = strtok_r(cp, ".", &bkptr);
 		while (NULL != tok) {
 			if (out_oid->len >= ASN_MAXOIDLEN) {
@@ -574,6 +575,7 @@ inline int usnmp_str2oid(const char * int_str_oid, usnmp_oid_t * out_oid,
 
 			out_oid->subs[out_oid->len] = val;
 			out_oid->len++;
+			errno=0;// strtok don't reset to zero errno if no error
 			tok = strtok_r(NULL, ".", &bkptr);
 		}
 		free(cp);
@@ -649,6 +651,7 @@ void usnmp_fprintf_binding(FILE* _stream, const usnmp_var_t *val) {
 		fprintf(_stream, "UNKNOWN SYNTAX %u", val->syntax);
 		break;
 	}
+	fflush(_stream);
 }
 
 void usnmp_fprintf_oid_t(FILE* _stream, usnmp_oid_t oid) {
