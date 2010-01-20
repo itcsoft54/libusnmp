@@ -595,7 +595,7 @@ void usnmp_fprintf_binding(FILE* _stream, const usnmp_var_t *val) {
 		break;
 
 	case USNMP_SYNTAX_INTEGER:
-		fprintf(_stream, "INTEGER %d", val->v.integer);
+		fprintf(_stream, "INTEGER %"PRId32, val->v.integer);
 		break;
 
 	case USNMP_SYNTAX_OCTETSTRING:
@@ -620,19 +620,19 @@ void usnmp_fprintf_binding(FILE* _stream, const usnmp_var_t *val) {
 		break;
 
 	case USNMP_SYNTAX_COUNTER:
-		fprintf(_stream, "COUNTER %u", val->v.uint32);
+		fprintf(_stream, "COUNTER %"PRIu32, val->v.uint32);
 		break;
 
 	case USNMP_SYNTAX_GAUGE:
-		fprintf(_stream, "GAUGE %u", val->v.uint32);
+		fprintf(_stream, "GAUGE %"PRIu32, val->v.uint32);
 		break;
 
 	case USNMP_SYNTAX_TIMETICKS:
-		fprintf(_stream, "TIMETICKS %u", val->v.uint32);
+		fprintf(_stream, "TIMETICKS %"PRIu32, val->v.uint32);
 		break;
 
 	case USNMP_SYNTAX_COUNTER64:
-		fprintf(_stream, "COUNTER64 %lld", val->v.counter64);
+		fprintf(_stream, "COUNTER64 %"PRIu64, val->v.counter64);
 		break;
 
 	case USNMP_SYNTAX_NOSUCHOBJECT:

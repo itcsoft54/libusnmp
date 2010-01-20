@@ -14,6 +14,7 @@
 #include <pthread.h>
 #include <limits.h>
 #include <errno.h>
+#include <inttypes.h>
 
 #include <netinet/in.h>
 #include <netdb.h>
