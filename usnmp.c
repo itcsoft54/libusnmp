@@ -178,19 +178,20 @@ enum usnmp_sync_err usnmp_sync_send_pdu(usnmp_pdu_t pdu_send,
 		fprintf(stderr, "socket is busy");
 		return -1;
 	}
-	u_int32_t reqid = usnmp_send_pdu(&pdu_send, rsocket, dev);
-	if (reqid == 0) {
+	err = usnmp_send_pdu(&pdu_send, rsocket, dev);
+	u_int32_t reqid = pdu_send.request_id;
+	if (err != 0) {
 		/* TODO error sending */
 		pthread_mutex_unlock(&rsocket->lockme);
-		return reqid; /* it's only an error */
+		return err; /* it's only an error */
 	}
 	/* waiting for a response drop all other packet */
 	do {
-		if (0 > (usnmp_recv_pdu(pdu_recv, timeout, rsocket))) {
+		if (0 > (err = usnmp_recv_pdu(pdu_recv, timeout, rsocket))) {
 			/* TODO error while recving */
 			/* TODO define if timeout or other*/
 			pthread_mutex_unlock(&rsocket->lockme);
-			return -1;
+			return err;
 		}
 	} while (reqid != (*pdu_recv)->request_id);
 	pthread_mutex_unlock(&rsocket->lockme);
