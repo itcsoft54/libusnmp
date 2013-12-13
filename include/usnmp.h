@@ -180,8 +180,7 @@ enum usnmp_sync_err{
  * warning do not use this function with a socket already use for asynchronous receive because they
  * cause lost packet for functions are using this socket.
  *
- * if the returned value is positive this is the request id of the pdu, else the value is
- * an error code value in usnmp_sync_send_err
+ * The returned value is an error code value in usnmp_sync_send_err
  * return USNMP_SUCESS if success
  * error :
  * return USNMP_SOCK_NULL_ERR if psocket is null and unable to create a new socket
