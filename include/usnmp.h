@@ -88,7 +88,6 @@ typedef enum usnmp_syntax usnmp_type_t;
 
 /* */
 inline void usnmp_init();
-inline void usnmp_init_usnmp_pdu(usnmp_pdu_t *pdu);
 inline void usnmp_init_device(usnmp_device_t * device);
 inline void usnmp_clean_pdu(usnmp_pdu_t *pdu);
 inline void usnmp_clean_var(usnmp_var_t *var);
@@ -98,6 +97,8 @@ inline int usnmp_str2oid(const char * str_oid,usnmp_oid_t * out_oid,usnmp_mib_t 
 
 /* return a pdu structure, you can free after use (after send for exemple) */
 inline usnmp_pdu_t * usnmp_create_pdu(int op,usnmp_version_t version);
+/* initialise a pdu structure */
+inline usnmp_pdu_t * usnmp_init_pdu(usnmp_pdu_t * pdu, int op, usnmp_version_t ver);
 /* return a device, you can free after use (after send for exemple) */
 inline usnmp_device_t * usnmp_create_device();
 

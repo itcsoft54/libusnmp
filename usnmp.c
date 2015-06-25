@@ -21,6 +21,16 @@ inline usnmp_pdu_t * usnmp_create_pdu(int op, usnmp_version_t ver) {
 	if (pdu == NULL) {
 		return NULL;
 	}
+	return usnmp_init_pdu(pdu, op, ver);
+}
+
+/* initialise a  pdu structure point by pdu param
+ * return the pdu structure initialise, or NULL if pdu param is set to NULL
+ *  */
+inline usnmp_pdu_t * usnmp_init_pdu(usnmp_pdu_t * pdu, int op, usnmp_version_t ver) {
+	if (pdu == NULL) {
+		return NULL;
+	}
 	pdu->type = op;
 	pdu->version = ver;
 	pdu->error_status = 0;
@@ -28,6 +38,7 @@ inline usnmp_pdu_t * usnmp_create_pdu(int op, usnmp_version_t ver) {
 	pdu->nbindings = 0;
 	return pdu;
 }
+
 /* free all sub element of usnmp_pdu_t use with usnmp_*_pdu to change pdu.
  * Warning : this function should be used only if you don't change something yourself */
 inline void usnmp_clean_pdu(usnmp_pdu_t *pdu) {
@@ -235,7 +246,7 @@ u_int32_t usnmp_next_reqid(usnmp_socket_t *sock) {
  USNMP_ASSEND_PTR_PDU_NULL = USNMP_PTR_PDU_NULL,
  USNMP_ASSEND_SOCK_INVALID = USNMP_SOCK_INVALID
  };*/
-
+// TODO memorisé le champs request_id du PDU pour le restoré apres envoi
 enum usnmp_async_send_err usnmp_send_pdu(usnmp_pdu_t *pdu,
 		usnmp_socket_t *psocket, usnmp_device_t dev) {
 	/* snmp_output */
