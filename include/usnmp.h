@@ -38,18 +38,32 @@ enum usnmp_common_error{
 	USNMP_NO_ERROR = 0,
 	USNMP_MALLOC_FAIL = -90,
 	USNMP_PTR_PDU_NULL =-91,
-	USNMP_SOCK_INVALID =-92
+	USNMP_SOCK_INVALID =-92,
+	USNMP_DEVICE_INVALID =-93,
 };
 #define USNMP_MAX_MSG_SIZE          1472 /* ethernet MTU minus IP/UDP header */
 
-#define MAX_IPV4_LEN 16 /* 123.567.901.345\0*/
+#define MAX_IPV4_STRLEN INET_ADDRSTRLEN
+#define MAX_IPV6_STRLEN INET6_ADDRSTRLEN
 /* other value is not yet implement */
 
 typedef struct in_addr ipv4_addr;
+typedef struct in6_addr ipv6_addr;
+typedef struct ip_addr_u{
+	union{
+		ipv4_addr ipv4;
+		ipv6_addr ipv6;
+	};
+}ipgen_addr_t;
+
+typedef enum af_inet_e{
+	AF_INET_4 = AF_INET,
+	AF_INET_6 = AF_INET6
+}af_inet_t;
 
 typedef struct usnmp_socket_st {
 	int fd;
-	struct sockaddr_in sa_in;
+	struct sockaddr sa;
 	struct timeval t_out; /* timeout went wait a sync packet */
 	// TODO erreur
 	pthread_mutex_t lockme;
@@ -75,11 +89,10 @@ typedef struct smmp_device_st {
 	/* community for snmpv2 */
 	char * public;
 	char * private; /* not use a this moment */
-	/* v4 information */
-	ipv4_addr ipv4;
+	af_inet_t af_inet /* type adress to use if af_inet_6_4, try to determine */;
+	/* ipv4 information */
+	ipgen_addr_t ip;
 	int remote_port;
-	/* ipv6 information (not yet implement ) */
-/* ipv6_addr ipv6; */
 } usnmp_device_t;
 
 typedef struct asn_oid usnmp_oid_t;
@@ -128,7 +141,8 @@ enum usnmp_async_send_err{
 	USNMP_ASSEND_PDU_UNK_VERS =-8,
 	USNMP_ASSEND_MALLOC_FAIL = USNMP_MALLOC_FAIL,
 	USNMP_ASSEND_PTR_PDU_NULL = USNMP_PTR_PDU_NULL,
-	USNMP_ASSEND_SOCK_INVALID = USNMP_SOCK_INVALID
+	USNMP_ASSEND_SOCK_INVALID = USNMP_SOCK_INVALID,
+	USNMP_ASSEND_DEVICE_INVALID = USNMP_DEVICE_INVALID
 };
 enum usnmp_async_send_err usnmp_send_pdu(usnmp_pdu_t *pdu, usnmp_socket_t *socket,
 				usnmp_device_t dev);
@@ -196,7 +210,7 @@ enum usnmp_sync_err usnmp_sync_send_pdu(usnmp_pdu_t pdu_send,
 		usnmp_device_t dev);
 
 /* return socket */
-usnmp_socket_t *usnmp_create_and_open_socket(int port);
+usnmp_socket_t *usnmp_create_and_open_socket(int port, af_inet_t af_inet);
 
 inline void usnmp_close_socket(usnmp_socket_t * socket);
 

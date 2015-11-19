@@ -177,7 +177,7 @@ enum usnmp_sync_err usnmp_sync_send_pdu(usnmp_pdu_t pdu_send,
 	usnmp_socket_t *rsocket = NULL;
 	int err = 0;
 	if (NULL == psocket) {
-		rsocket = usnmp_create_and_open_socket(USNMP_RANDOM_PORT);
+		rsocket = usnmp_create_and_open_socket(USNMP_RANDOM_PORT,AF_INET_6);
 	} else {
 		rsocket = psocket;
 	}
@@ -280,20 +280,32 @@ enum usnmp_async_send_err usnmp_send_pdu(usnmp_pdu_t *pdu,
 	u_char *sndbuf = malloc(USNMP_MAX_MSG_SIZE);
 	size_t sndlen;
 	ssize_t len;
-	struct sockaddr_in addr;
+	socklen_t socklen=0;
+	struct sockaddr addr;
+	int lport;
 	memset(&addr, 0, sizeof(addr));
 	if (dev.remote_port == 0) {
-		addr.sin_port = htons(USNMP_DEFAULT_SERV_PORT);
+		lport = htons(USNMP_DEFAULT_SERV_PORT);
 	} else {
-		addr.sin_port = htons(dev.remote_port);
+		lport = htons(dev.remote_port);
 	}
-	addr.sin_addr = dev.ipv4;
-	addr.sin_family = AF_INET;
+	addr.sa_family = dev.af_inet;
+	if(dev.af_inet==AF_INET_4){
+		((struct sockaddr_in *)(&addr))->sin_addr = dev.ip.ipv4;
+		((struct sockaddr_in *)(&addr))->sin_port = lport;
+		socklen = sizeof(struct sockaddr_in);
+	}else if(dev.af_inet==AF_INET_6){
+		((struct sockaddr_in6 *)(&addr))->sin6_addr = dev.ip.ipv6;
+		((struct sockaddr_in6 *)(&addr))->sin6_port = lport;
+		socklen = sizeof(struct sockaddr_in6);
+	}else{
+		return USNMP_ASSEND_SOCK_INVALID;
+	}
 	usnmp_build_packet(pdu, sndbuf, &sndlen);
 	// TODO debug
 	//usnmp_fprintf_pdu_t(stdout,*pdu);
 	if ((len = sendto(psocket->fd, sndbuf, sndlen, 0,
-			(struct sockaddr *) &addr, sizeof(struct sockaddr_in))) == -1) {
+			(struct sockaddr *) &addr, socklen)) == -1) {
 		/*syslog(LOG_ERR, "sendto: %m");*/
 		err = USNMP_ASSEND_ERR;
 		perror("sendto");
@@ -398,7 +410,7 @@ enum usnmp_async_recv_err usnmp_recv_pdu(usnmp_pdu_t ** retpdu,
 }
 
 /* return a malloc'd socket */
-usnmp_socket_t * usnmp_create_and_open_socket(int port) {
+usnmp_socket_t * usnmp_create_and_open_socket(int port, af_inet_t af_inet) {
 	usnmp_socket_t * usnmp_socket = (usnmp_socket_t *) calloc(1,
 			sizeof(usnmp_socket_t));
 	usnmp_socket->last_reqid = 0;
@@ -408,7 +420,7 @@ usnmp_socket_t * usnmp_create_and_open_socket(int port) {
 		return NULL;
 	}
 	pthread_mutex_init(&usnmp_socket->lockme, NULL);
-	usnmp_socket->fd = socket(PF_INET, SOCK_DGRAM, 0);
+	usnmp_socket->fd = socket(af_inet, SOCK_DGRAM, 0);
 	if (usnmp_socket->fd < 0) {
 		/* ERROR */
 		perror("socket open error");
@@ -417,18 +429,29 @@ usnmp_socket_t * usnmp_create_and_open_socket(int port) {
 	} else {
 		int i = 0;
 		bool quit = false;
+		socklen_t socksize=0;
 		while (!quit) {
 			if (port < 0) {
 				/* random port between 2000 and 65535 */
 				int irand = rand();
 				pport = (65535 - 2000) * (irand * 1.0 / RAND_MAX) + 2000;
 			}
-			usnmp_socket->sa_in.sin_family = AF_INET;
-			usnmp_socket->sa_in.sin_port = htons(pport);
-			usnmp_socket->sa_in.sin_addr.s_addr = htonl(INADDR_ANY);
+			usnmp_socket->sa.sa_family = af_inet;
+			if(af_inet == AF_INET_6){
+				((struct sockaddr_in6 *)(&usnmp_socket->sa))->sin6_port = htons(pport);
+				((struct sockaddr_in6 *)(&usnmp_socket->sa))->sin6_addr = in6addr_any;
+				socksize=sizeof(struct sockaddr_in6 );
+			}else if(af_inet == AF_INET_4){
+				((struct sockaddr_in *)(&usnmp_socket->sa))->sin_port = htons(pport);
+				((struct sockaddr_in *)(&usnmp_socket->sa))->sin_addr.s_addr = htonl(INADDR_ANY);
+				socksize=sizeof(struct sockaddr);
+			}else{
+				perror("socket af_inet not supported");
+				return NULL;
+			}
 			if (bind(usnmp_socket->fd,
-					(const struct sockaddr *) &usnmp_socket->sa_in,
-					sizeof(usnmp_socket->sa_in))) {
+					(const struct sockaddr *) &usnmp_socket->sa,
+					socksize)) {
 				if (i > 5) {
 					perror("bind error !");
 					close(usnmp_socket->fd);
@@ -456,9 +479,9 @@ void usnmp_close_socket(usnmp_socket_t * psocket) {
 
 /* display function */
 void usnmp_fprintf_device_t(FILE* _stream, usnmp_device_t dev) {
-	// char buf[MAX_IPV4_LEN];
+	char buf[INET6_ADDRSTRLEN];
 	fprintf(_stream, "Device : \n");
-	fprintf(_stream, "\tipv4:[%s] \n", inet_ntoa(dev.ipv4));
+	fprintf(_stream, "\tip:[%s] \n", inet_ntop(dev.af_inet,&dev.ip,buf,INET6_ADDRSTRLEN));
 	//fprintf(_stream,"\tipv4:[%s] \n" ,inet_neta(dev.ipv4,buf,MAX_IPV4_LEN));
 	if (dev.remote_port > 0) {
 		fprintf(_stream, "\tport:[%i] \n", dev.remote_port);
@@ -546,7 +569,7 @@ void usnmp_fprintf_pdu_t(FILE* _stream, usnmp_pdu_t pdu) {
 inline int usnmp_str2oid(const char * int_str_oid, usnmp_oid_t * out_oid,
 		usnmp_mib_t * mib) {
 	/* split this string to number*/
-	memset(out_oid, 0, sizeof(out_oid));
+	memset(out_oid, 0, sizeof(usnmp_oid_t));
 	char * cp = NULL;
 	char * tok = NULL;
 	char * endptr = NULL;
