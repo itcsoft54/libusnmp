@@ -92,7 +92,7 @@ typedef struct smmp_device_st {
 	af_inet_t af_inet /* type adress to use if af_inet_6_4, try to determine */;
 	/* ipv4 information */
 	ipgen_addr_t ip;
-	int remote_port;
+	in_port_t remote_port;
 } usnmp_device_t;
 
 typedef struct asn_oid usnmp_oid_t;
