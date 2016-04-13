@@ -109,9 +109,14 @@ struct usnmp_pdu {
 
 	/* others */
 	int32_t		request_id;
-	int32_t		error_status;
-	int32_t		error_index;
-
+	union{
+		int32_t		error_status;
+		int32_t		n;
+	};
+	union{
+		int32_t		error_index;
+		int32_t		m;
+	};
 	/* fixes for encoding */
 	u_char		*outer_ptr;
 	u_char		*pdu_ptr;

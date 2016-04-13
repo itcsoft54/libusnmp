@@ -33,8 +33,13 @@ inline usnmp_pdu_t * usnmp_init_pdu(usnmp_pdu_t * pdu, int op, usnmp_version_t v
 	}
 	pdu->type = op;
 	pdu->version = ver;
-	pdu->error_status = 0;
-	pdu->error_index = 0;
+	if(op == USNMP_PDU_GETBULK){
+		pdu->n = USNMP_DEFAULT_N_VAL;
+		pdu->m = USNMP_DEFAULT_M_VAL;
+	}else{
+		pdu->error_status = 0;
+		pdu->error_index = 0;
+	}
 	pdu->nbindings = 0;
 	return pdu;
 }
@@ -549,8 +554,13 @@ void usnmp_fprintf_pdu_t(FILE* _stream, usnmp_pdu_t pdu) {
 	case USNMP_PDU_REPORT:
 		fprintf(_stream, "%s %s '%s'", types[pdu.type], vers, pdu.community);
 		fprintf(_stream, " request_id=%d\n", pdu.request_id);
-		fprintf(_stream, " error_status=%d\n", pdu.error_status);
-		fprintf(_stream, " error_index=%d\n", pdu.error_index);
+		if(pdu.type == USNMP_PDU_GETBULK){
+			fprintf(_stream, " n=%d\n", pdu.error_status);
+			fprintf(_stream, " m=%d\n", pdu.error_index);
+		}else{
+			fprintf(_stream, " error_status=%d\n", pdu.error_status);
+			fprintf(_stream, " error_index=%d\n", pdu.error_index);
+		}
 		for (i = 0; i < pdu.nbindings; i++) {
 			fprintf(_stream, " [%u]: ", i);
 			usnmp_fprintf_binding(_stream, &pdu.bindings[i]);
